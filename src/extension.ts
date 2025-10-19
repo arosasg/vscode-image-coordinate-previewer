@@ -100,6 +100,8 @@ function getWebviewContent(imageSrc: string): string {
             object-fit: contain;
             display: block;
             cursor: crosshair;
+            max-width: 100%;
+            max-height: 100%;
         }
         
         .drawing-overlay {
@@ -387,11 +389,50 @@ function getWebviewContent(imageSrc: string): string {
         let startY = 0;
         let currentRect = null;
         
+        function getImageDisplayMetrics() {
+            const rect = image.getBoundingClientRect();
+            const elementWidth = rect.width;
+            const elementHeight = rect.height;
+
+            if (imageWidth <= 0 || imageHeight <= 0 || elementWidth <= 0 || elementHeight <= 0) {
+                return {
+                    rect,
+                    renderedWidth: elementWidth,
+                    renderedHeight: elementHeight,
+                    offsetX: 0,
+                    offsetY: 0,
+                    scaleX: elementWidth > 0 ? 1 : 0,
+                    scaleY: elementHeight > 0 ? 1 : 0
+                };
+            }
+
+            const widthScale = elementWidth / imageWidth;
+            const heightScale = elementHeight / imageHeight;
+            const scale = Math.min(widthScale, heightScale);
+
+            const renderedWidth = imageWidth * scale;
+            const renderedHeight = imageHeight * scale;
+            const offsetX = (elementWidth - renderedWidth) / 2;
+            const offsetY = (elementHeight - renderedHeight) / 2;
+
+            return {
+                rect,
+                renderedWidth,
+                renderedHeight,
+                offsetX,
+                offsetY,
+                scaleX: renderedWidth > 0 ? imageWidth / renderedWidth : 0,
+                scaleY: renderedHeight > 0 ? imageHeight / renderedHeight : 0
+            };
+        }
+
         // Wait for image to load to get actual dimensions
         image.onload = function() {
             imageWidth = this.naturalWidth;
             imageHeight = this.naturalHeight;
             dimensions.textContent = \`\${imageWidth} × \${imageHeight}\`;
+            console.log('Image loaded:', imageWidth, 'x', imageHeight);
+            console.log('Image display size:', this.offsetWidth, 'x', this.offsetHeight);
         };
         
         // Toggle drawing mode
@@ -451,82 +492,64 @@ function getWebviewContent(imageSrc: string): string {
                 return '';
             }
             
-            // Convert display coordinates to image coordinates
-            const imageRect = image.getBoundingClientRect();
-            const containerRect = image.parentElement.getBoundingClientRect();
-            
-            const imageDisplayWidth = imageRect.width;
-            const imageDisplayHeight = imageRect.height;
-            const containerWidth = containerRect.width;
-            const containerHeight = containerRect.height;
-            
-            const offsetX = (containerWidth - imageDisplayWidth) / 2;
-            const offsetY = (containerHeight - imageDisplayHeight) / 2;
-            
-            const scaleX = imageWidth / imageDisplayWidth;
-            const scaleY = imageHeight / imageDisplayHeight;
-            
-            const imageLeft = Math.round((currentRect.left - offsetX) * scaleX);
-            const imageTop = Math.round((currentRect.top - offsetY) * scaleY);
-            const imageRight = Math.round((currentRect.right - offsetX) * scaleX);
-            const imageBottom = Math.round((currentRect.bottom - offsetY) * scaleY);
-            
-            // Clamp coordinates to image bounds
-            const clampedLeft = Math.max(0, Math.min(imageWidth, imageLeft));
-            const clampedTop = Math.max(0, Math.min(imageHeight, imageTop));
-            const clampedRight = Math.max(0, Math.min(imageWidth, imageRight));
-            const clampedBottom = Math.max(0, Math.min(imageHeight, imageBottom));
-            
-            // Calculate normalized coordinates
+            const metrics = getImageDisplayMetrics();
+            const scaleX = metrics.scaleX || 1;
+            const scaleY = metrics.scaleY || 1;
+
+            const clampedLeftPx = Math.max(0, Math.min(metrics.renderedWidth, currentRect.left));
+            const clampedTopPx = Math.max(0, Math.min(metrics.renderedHeight, currentRect.top));
+            const clampedRightPx = Math.max(0, Math.min(metrics.renderedWidth, currentRect.right));
+            const clampedBottomPx = Math.max(0, Math.min(metrics.renderedHeight, currentRect.bottom));
+
+            const imageLeft = Math.max(0, Math.min(imageWidth - 1, Math.round(clampedLeftPx * scaleX)));
+            const imageTop = Math.max(0, Math.min(imageHeight - 1, Math.round(clampedTopPx * scaleY)));
+            const imageRight = Math.max(0, Math.min(imageWidth - 1, Math.round(clampedRightPx * scaleX)));
+            const imageBottom = Math.max(0, Math.min(imageHeight - 1, Math.round(clampedBottomPx * scaleY)));
+
+            const clampedLeft = Math.min(imageLeft, imageRight);
+            const clampedTop = Math.min(imageTop, imageBottom);
+            const clampedRight = Math.max(imageLeft, imageRight);
+            const clampedBottom = Math.max(imageTop, imageBottom);
+
             const topNorm = clampedTop / imageHeight;
             const leftNorm = clampedLeft / imageWidth;
             const rightNorm = clampedRight / imageWidth;
             const bottomNorm = clampedBottom / imageHeight;
-            
-            // Generate JSON dictionary
+
             const coordsDict = {
                 "top": topNorm,
                 "left": leftNorm,
                 "right": rightNorm,
                 "bottom": bottomNorm
             };
-            
+
             return JSON.stringify(coordsDict, null, 4);
         }
         
         function updateRectangleCoords(rect) {
-            // Convert display coordinates to image coordinates
-            const imageRect = image.getBoundingClientRect();
-            const containerRect = image.parentElement.getBoundingClientRect();
+            const metrics = getImageDisplayMetrics();
+            const scaleX = metrics.scaleX || 1;
+            const scaleY = metrics.scaleY || 1;
+
+            const clampedLeftPx = Math.max(0, Math.min(metrics.renderedWidth, rect.left));
+            const clampedTopPx = Math.max(0, Math.min(metrics.renderedHeight, rect.top));
+            const clampedRightPx = Math.max(0, Math.min(metrics.renderedWidth, rect.right));
+            const clampedBottomPx = Math.max(0, Math.min(metrics.renderedHeight, rect.bottom));
+
+            const imageLeft = Math.max(0, Math.min(imageWidth - 1, Math.round(clampedLeftPx * scaleX)));
+            const imageTop = Math.max(0, Math.min(imageHeight - 1, Math.round(clampedTopPx * scaleY)));
+            const imageRight = Math.max(0, Math.min(imageWidth - 1, Math.round(clampedRightPx * scaleX)));
+            const imageBottom = Math.max(0, Math.min(imageHeight - 1, Math.round(clampedBottomPx * scaleY)));
             
-            // Calculate the actual image position within the container
-            const imageDisplayWidth = imageRect.width;
-            const imageDisplayHeight = imageRect.height;
-            const containerWidth = containerRect.width;
-            const containerHeight = containerRect.height;
+            // Ensure right >= left and bottom >= top
+            const clampedLeft = Math.min(imageLeft, imageRight);
+            const clampedTop = Math.min(imageTop, imageBottom);
+            const clampedRight = Math.max(imageLeft, imageRight);
+            const clampedBottom = Math.max(imageTop, imageBottom);
             
-            // Calculate offsets (image is centered in container)
-            const offsetX = (containerWidth - imageDisplayWidth) / 2;
-            const offsetY = (containerHeight - imageDisplayHeight) / 2;
-            
-            // Convert display coordinates to image coordinates
-            const scaleX = imageWidth / imageDisplayWidth;
-            const scaleY = imageHeight / imageDisplayHeight;
-            
-            const imageLeft = Math.round((rect.left - offsetX) * scaleX);
-            const imageTop = Math.round((rect.top - offsetY) * scaleY);
-            const imageRight = Math.round((rect.right - offsetX) * scaleX);
-            const imageBottom = Math.round((rect.bottom - offsetY) * scaleY);
-            const imageWidth_scaled = Math.round(rect.width * scaleX);
-            const imageHeight_scaled = Math.round(rect.height * scaleY);
-            
-            // Clamp coordinates to image bounds
-            const clampedLeft = Math.max(0, Math.min(imageWidth, imageLeft));
-            const clampedTop = Math.max(0, Math.min(imageHeight, imageTop));
-            const clampedRight = Math.max(0, Math.min(imageWidth, imageRight));
-            const clampedBottom = Math.max(0, Math.min(imageHeight, imageBottom));
-            const clampedWidth = Math.max(0, Math.min(imageWidth, imageWidth_scaled));
-            const clampedHeight = Math.max(0, Math.min(imageHeight, imageHeight_scaled));
+            // Calculate width and height
+            const clampedWidth = clampedRight - clampedLeft;
+            const clampedHeight = clampedBottom - clampedTop;
             
             // Update raw coordinates (image coordinates)
             rectTop.textContent = clampedTop;
@@ -562,18 +585,30 @@ function getWebviewContent(imageSrc: string): string {
             jsonOutput.style.display = 'block';
         }
         
-        function drawRectangle(x1, y1, x2, y2) {
-            const left = Math.min(x1, x2);
-            const top = Math.min(y1, y2);
-            const right = Math.max(x1, x2);
-            const bottom = Math.max(y1, y2);
-            
-            rectangleOverlay.style.left = left + 'px';
-            rectangleOverlay.style.top = top + 'px';
+        function drawRectangle(x1, y1, x2, y2, metrics) {
+            if (!metrics) {
+                return;
+            }
+
+            const widthLimit = metrics.renderedWidth;
+            const heightLimit = metrics.renderedHeight;
+
+            const clampedX1 = Math.max(0, Math.min(widthLimit, x1));
+            const clampedY1 = Math.max(0, Math.min(heightLimit, y1));
+            const clampedX2 = Math.max(0, Math.min(widthLimit, x2));
+            const clampedY2 = Math.max(0, Math.min(heightLimit, y2));
+
+            const left = Math.min(clampedX1, clampedX2);
+            const top = Math.min(clampedY1, clampedY2);
+            const right = Math.max(clampedX1, clampedX2);
+            const bottom = Math.max(clampedY1, clampedY2);
+
+            rectangleOverlay.style.left = (left + metrics.offsetX) + 'px';
+            rectangleOverlay.style.top = (top + metrics.offsetY) + 'px';
             rectangleOverlay.style.width = (right - left) + 'px';
             rectangleOverlay.style.height = (bottom - top) + 'px';
             rectangleOverlay.style.display = 'block';
-            
+
             currentRect = { left, top, right, bottom, width: right - left, height: bottom - top };
             updateRectangleCoords(currentRect);
         }
@@ -581,57 +616,54 @@ function getWebviewContent(imageSrc: string): string {
         drawingOverlay.addEventListener('mousedown', function(e) {
             if (!isDrawingMode) return;
             
-            const rect = image.getBoundingClientRect();
-            startX = e.clientX - rect.left;
-            startY = e.clientY - rect.top;
+            const metrics = getImageDisplayMetrics();
+            const relativeX = e.clientX - (metrics.rect.left + metrics.offsetX);
+            const relativeY = e.clientY - (metrics.rect.top + metrics.offsetY);
+
+            if (relativeX < 0 || relativeX > metrics.renderedWidth ||
+                relativeY < 0 || relativeY > metrics.renderedHeight) {
+                isDrawing = false;
+                return;
+            }
+
+            startX = relativeX;
+            startY = relativeY;
             isDrawing = true;
-            
-            // Clear existing rectangle
+
             clearRectangle();
             
             e.preventDefault();
         });
         
         drawingOverlay.addEventListener('mousemove', function(e) {
-            const rect = image.getBoundingClientRect();
-            const containerRect = image.parentElement.getBoundingClientRect();
-            
-            // Calculate display coordinates
-            const displayX = Math.round(e.clientX - rect.left);
-            const displayY = Math.round(e.clientY - rect.top);
-            
-            // Convert to image coordinates
-            const imageDisplayWidth = rect.width;
-            const imageDisplayHeight = rect.height;
-            const containerWidth = containerRect.width;
-            const containerHeight = containerRect.height;
-            
-            const offsetX = (containerWidth - imageDisplayWidth) / 2;
-            const offsetY = (containerHeight - imageDisplayHeight) / 2;
-            
-            const scaleX = imageWidth / imageDisplayWidth;
-            const scaleY = imageHeight / imageDisplayHeight;
-            
-            const imageX = Math.round((displayX - offsetX) * scaleX);
-            const imageY = Math.round((displayY - offsetY) * scaleY);
-            
-            // Clamp to image bounds
-            const clampedX = Math.max(0, Math.min(imageWidth, imageX));
-            const clampedY = Math.max(0, Math.min(imageHeight, imageY));
-            
-            // Calculate normalized coordinates (0-1 range)
-            const normalizedX = imageWidth > 0 ? (clampedX / imageWidth).toFixed(3) : '0.000';
-            const normalizedY = imageHeight > 0 ? (clampedY / imageHeight).toFixed(3) : '0.000';
-            
-            // Update coordinate display (show image coordinates)
-            rawCoords.textContent = \`(\${clampedX}, \${clampedY})\`;
-            normalizedCoords.textContent = \`(\${normalizedX}, \${normalizedY})\`;
-            
-            // Handle rectangle drawing
-            if (isDrawing && isDrawingMode) {
-                drawRectangle(startX, startY, displayX, displayY);
+            const metrics = getImageDisplayMetrics();
+            const relativeX = e.clientX - (metrics.rect.left + metrics.offsetX);
+            const relativeY = e.clientY - (metrics.rect.top + metrics.offsetY);
+
+            const clampedX = Math.max(0, Math.min(metrics.renderedWidth, relativeX));
+            const clampedY = Math.max(0, Math.min(metrics.renderedHeight, relativeY));
+            const withinBounds = relativeX >= 0 && relativeX <= metrics.renderedWidth &&
+                relativeY >= 0 && relativeY <= metrics.renderedHeight;
+
+            if (withinBounds && imageWidth > 0 && imageHeight > 0) {
+                const imageX = Math.max(0, Math.min(imageWidth - 1, Math.round(clampedX * (metrics.scaleX || 1))));
+                const imageY = Math.max(0, Math.min(imageHeight - 1, Math.round(clampedY * (metrics.scaleY || 1))));
+
+                const normalizedX = imageWidth > 0 ? (imageX / imageWidth).toFixed(3) : '0.000';
+                const normalizedY = imageHeight > 0 ? (imageY / imageHeight).toFixed(3) : '0.000';
+
+                rawCoords.textContent = '(' + imageX + ', ' + imageY + ')';
+                normalizedCoords.textContent = '(' + normalizedX + ', ' + normalizedY + ')';
+                overlay.classList.remove('hidden');
+            } else {
+                rawCoords.textContent = '(outside)';
+                normalizedCoords.textContent = '(outside)';
             }
-            
+
+            if (isDrawing && isDrawingMode) {
+                drawRectangle(startX, startY, clampedX, clampedY, metrics);
+            }
+
             e.preventDefault();
         });
         
@@ -651,43 +683,28 @@ function getWebviewContent(imageSrc: string): string {
         // Keep hover functionality on the image for non-drawing mode
         image.addEventListener('mousemove', function(e) {
             if (isDrawingMode) return;
-            
-            const rect = this.getBoundingClientRect();
-            const containerRect = this.parentElement.getBoundingClientRect();
-            
-            // Calculate display coordinates
-            const displayX = Math.round(e.clientX - rect.left);
-            const displayY = Math.round(e.clientY - rect.top);
-            
-            // Convert to image coordinates
-            const imageDisplayWidth = rect.width;
-            const imageDisplayHeight = rect.height;
-            const containerWidth = containerRect.width;
-            const containerHeight = containerRect.height;
-            
-            const offsetX = (containerWidth - imageDisplayWidth) / 2;
-            const offsetY = (containerHeight - imageDisplayHeight) / 2;
-            
-            const scaleX = imageWidth / imageDisplayWidth;
-            const scaleY = imageHeight / imageDisplayHeight;
-            
-            const imageX = Math.round((displayX - offsetX) * scaleX);
-            const imageY = Math.round((displayY - offsetY) * scaleY);
-            
-            // Clamp to image bounds
-            const clampedX = Math.max(0, Math.min(imageWidth, imageX));
-            const clampedY = Math.max(0, Math.min(imageHeight, imageY));
-            
-            // Calculate normalized coordinates (0-1 range)
-            const normalizedX = imageWidth > 0 ? (clampedX / imageWidth).toFixed(3) : '0.000';
-            const normalizedY = imageHeight > 0 ? (clampedY / imageHeight).toFixed(3) : '0.000';
-            
-            // Update coordinate display (show image coordinates)
-            rawCoords.textContent = \`(\${clampedX}, \${clampedY})\`;
-            normalizedCoords.textContent = \`(\${normalizedX}, \${normalizedY})\`;
-            
-            // Show hover overlay
-            overlay.classList.remove('hidden');
+
+            const metrics = getImageDisplayMetrics();
+            const relativeX = e.clientX - (metrics.rect.left + metrics.offsetX);
+            const relativeY = e.clientY - (metrics.rect.top + metrics.offsetY);
+
+            const withinBounds = relativeX >= 0 && relativeX <= metrics.renderedWidth &&
+                relativeY >= 0 && relativeY <= metrics.renderedHeight;
+
+            if (withinBounds && imageWidth > 0 && imageHeight > 0) {
+                const imageX = Math.max(0, Math.min(imageWidth - 1, Math.round(relativeX * (metrics.scaleX || 1))));
+                const imageY = Math.max(0, Math.min(imageHeight - 1, Math.round(relativeY * (metrics.scaleY || 1))));
+
+                const normalizedX = imageWidth > 0 ? (imageX / imageWidth).toFixed(3) : '0.000';
+                const normalizedY = imageHeight > 0 ? (imageY / imageHeight).toFixed(3) : '0.000';
+
+                rawCoords.textContent = '(' + imageX + ', ' + imageY + ')';
+                normalizedCoords.textContent = '(' + normalizedX + ', ' + normalizedY + ')';
+
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
         });
         
         image.addEventListener('mouseleave', function() {
