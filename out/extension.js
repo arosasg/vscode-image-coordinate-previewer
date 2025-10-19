@@ -208,6 +208,49 @@ function getWebviewContent(imageSrc) {
             display: none;
         }
         
+        .copy-section {
+            margin-top: 20px;
+            text-align: left;
+        }
+        
+        .copy-button {
+            padding: 8px 16px;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .copy-button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+        
+        .copy-button:disabled {
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            cursor: not-allowed;
+        }
+        
+        .json-output {
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 12px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 11px;
+            color: var(--vscode-textPreformat-foreground);
+            white-space: pre;
+            word-break: normal;
+            max-width: 100%;
+            margin: 0;
+            text-align: left;
+            overflow-x: auto;
+            display: none;
+        }
+        
         .hidden {
             display: none;
         }
@@ -278,6 +321,10 @@ function getWebviewContent(imageSrc) {
             <button id="clearRect" class="control-button">Clear Rectangle</button>
             <button id="toggleMode" class="control-button">Drawing Mode</button>
         </div>
+        <div class="copy-section">
+            <button id="copyCoords" class="copy-button" disabled>Copy Coordinates</button>
+            <div id="jsonOutput" class="json-output"></div>
+        </div>
     </div>
 
     <script>
@@ -291,6 +338,8 @@ function getWebviewContent(imageSrc) {
         const clearRectBtn = document.getElementById('clearRect');
         const toggleModeBtn = document.getElementById('toggleMode');
         const drawingOverlay = document.getElementById('drawingOverlay');
+        const copyCoordsBtn = document.getElementById('copyCoords');
+        const jsonOutput = document.getElementById('jsonOutput');
         
         // Rectangle coordinate elements
         const rectTop = document.getElementById('rectTop');
@@ -342,10 +391,85 @@ function getWebviewContent(imageSrc) {
             clearRectangle();
         });
         
+        // Copy coordinates
+        copyCoordsBtn.addEventListener('click', function() {
+            if (currentRect && imageWidth > 0 && imageHeight > 0) {
+                const coords = generateCoordinateDictionary();
+                navigator.clipboard.writeText(coords).then(() => {
+                    this.textContent = 'Copied!';
+                    setTimeout(() => {
+                        this.textContent = 'Copy Coordinates';
+                    }, 2000);
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = coords;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    this.textContent = 'Copied!';
+                    setTimeout(() => {
+                        this.textContent = 'Copy Coordinates';
+                    }, 2000);
+                });
+            }
+        });
+        
         function clearRectangle() {
             rectangleOverlay.style.display = 'none';
             rectangleCoords.style.display = 'none';
             currentRect = null;
+            copyCoordsBtn.disabled = true;
+            jsonOutput.style.display = 'none';
+        }
+        
+        function generateCoordinateDictionary() {
+            if (!currentRect || imageWidth <= 0 || imageHeight <= 0) {
+                return '';
+            }
+            
+            // Convert display coordinates to image coordinates
+            const imageRect = image.getBoundingClientRect();
+            const containerRect = image.parentElement.getBoundingClientRect();
+            
+            const imageDisplayWidth = imageRect.width;
+            const imageDisplayHeight = imageRect.height;
+            const containerWidth = containerRect.width;
+            const containerHeight = containerRect.height;
+            
+            const offsetX = (containerWidth - imageDisplayWidth) / 2;
+            const offsetY = (containerHeight - imageDisplayHeight) / 2;
+            
+            const scaleX = imageWidth / imageDisplayWidth;
+            const scaleY = imageHeight / imageDisplayHeight;
+            
+            const imageLeft = Math.round((currentRect.left - offsetX) * scaleX);
+            const imageTop = Math.round((currentRect.top - offsetY) * scaleY);
+            const imageRight = Math.round((currentRect.right - offsetX) * scaleX);
+            const imageBottom = Math.round((currentRect.bottom - offsetY) * scaleY);
+            
+            // Clamp coordinates to image bounds
+            const clampedLeft = Math.max(0, Math.min(imageWidth, imageLeft));
+            const clampedTop = Math.max(0, Math.min(imageHeight, imageTop));
+            const clampedRight = Math.max(0, Math.min(imageWidth, imageRight));
+            const clampedBottom = Math.max(0, Math.min(imageHeight, imageBottom));
+            
+            // Calculate normalized coordinates
+            const topNorm = clampedTop / imageHeight;
+            const leftNorm = clampedLeft / imageWidth;
+            const rightNorm = clampedRight / imageWidth;
+            const bottomNorm = clampedBottom / imageHeight;
+            
+            // Generate JSON dictionary
+            const coordsDict = {
+                "top": topNorm,
+                "left": leftNorm,
+                "right": rightNorm,
+                "bottom": bottomNorm
+            };
+            
+            return JSON.stringify(coordsDict, null, 4);
         }
         
         function updateRectangleCoords(rect) {
@@ -408,6 +532,12 @@ function getWebviewContent(imageSrc) {
             }
             
             rectangleCoords.style.display = 'block';
+            
+            // Enable copy button and show JSON output
+            copyCoordsBtn.disabled = false;
+            const jsonString = generateCoordinateDictionary();
+            jsonOutput.textContent = jsonString;
+            jsonOutput.style.display = 'block';
         }
         
         function drawRectangle(x1, y1, x2, y2) {
