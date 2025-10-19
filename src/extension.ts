@@ -141,9 +141,9 @@ function getWebviewContent(imageSrc: string): string {
         .handle-se { bottom: -4px; right: -4px; cursor: se-resize; }
         
         .coordinate-overlay {
-            position: absolute;
-            top: 10px;
-            left: 10px;
+            position: fixed;
+            top: 20px;
+            left: 20px;
             background-color: var(--vscode-editor-background);
             border: 1px solid var(--vscode-panel-border);
             border-radius: 4px;
@@ -202,9 +202,9 @@ function getWebviewContent(imageSrc: string): string {
         }
         
         .rectangle-coords {
-            position: absolute;
-            top: 10px;
-            right: 10px;
+            position: fixed;
+            top: 20px;
+            right: 20px;
             background-color: var(--vscode-editor-background);
             border: 1px solid var(--vscode-panel-border);
             border-radius: 4px;
@@ -220,8 +220,17 @@ function getWebviewContent(imageSrc: string): string {
         }
         
         .copy-section {
-            margin-top: 20px;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
             text-align: left;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
         }
         
         .copy-button {
@@ -260,6 +269,8 @@ function getWebviewContent(imageSrc: string): string {
             text-align: left;
             overflow-x: auto;
             display: none;
+            max-height: 200px;
+            overflow-y: auto;
         }
         
         .hidden {
